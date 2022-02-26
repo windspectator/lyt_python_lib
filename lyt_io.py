@@ -66,17 +66,53 @@ def get_path_parent(path):
     from pathlib import Path
     return Path(path).resolve().parent.as_posix() + "/"
 
-def get_path_children(path):
+def get_path_children(path, only_file=False, only_dir=False, recursive=False,
+                      only_name=False, pattern=None):
+    """
+    no need to set recursive when you use a pattern!
+    eg. you can pass pattern like "a/*/c/*.cpp"
+    """
     from pathlib import Path
-    return [x.as_posix() for x in Path(path).resolve().iterdir()]
+    path = Path(path).resolve()
+    result = []
 
-def get_path_child_names(path, pattern=None):
-    from pathlib import Path
-    p = Path(path).resolve()
-    if pattern:
-        return [x.name for x in p.glob(pattern)]
+    if only_name:
+        def _path2str(path):
+            return path.name
     else:
-        return [x.name for x in p.iterdir()]
+        def _path2str(path):
+            return path.as_posix()
+    if pattern is None:
+        def _path_iterate(path):
+            return path.iterdir()
+    else:
+        def _path_iterate(path):
+            return path.glob(pattern)
+
+    if not recursive:
+        for p in _path_iterate(path):
+            if only_file and p.is_dir():
+                continue
+            if only_dir and not p.is_dir():
+                continue
+            result.append(_path2str(p))
+        return result
+
+    def _get_path_children_recursive(result, cur_path):
+        for p in cur_path.iterdir():
+            if not p.is_dir():
+                if not only_dir:
+                    result.append(_path2str(p))
+                continue
+
+            # p is dir
+            if not only_file:
+                result.append(_path2str(p))
+            _get_path_children_recursive(result, p)
+        
+        return result
+    
+    return _get_path_children_recursive(result, path)
 
 def get_path_subdirs(path):
     from pathlib import Path

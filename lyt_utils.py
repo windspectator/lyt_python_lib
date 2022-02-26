@@ -1,4 +1,4 @@
-import imp
+from ast import Assert
 import sys
 assert sys.version_info[0] >= 3 and sys.version_info[1] >= 7, "need to be run under python 3.7+"
 is_windows = (sys.platform == "win32")     # windows or linux
@@ -276,6 +276,10 @@ def cd(path):
     import os
     os.chdir(path)
 
+def pwd():
+    import os
+    return os.getcwd()
+
 def sorted_arg(seq, key=None):
     """
     sort a sequence and return sorted indexes
@@ -326,3 +330,67 @@ def parse_blocks(lines, block_pattern):
         result.append(block)
 
     return result
+
+def zip(src_path, dest_path=None, zip_format="zip", password=None):
+    def _do_zip(src_path, dest_path, password):
+        command = ["zip"]
+        if password is not None:
+            command.extend(["-P", password])
+        command.extend([dest_path, src_path])
+        run(command)
+
+    def _do_tar(src_path, dest_path, password):
+        assert False
+
+    zip_funcs = {
+        "zip": _do_zip,
+        "rar": _do_tar,
+    }
+    zip_func = zip_funcs[zip_format]
+    if dest_path is None:
+        dest_path = src_path + "." + zip_format
+
+    assert False
+    # deal with the absolute path problem
+    zip_func(src_path, dest_path, password)
+
+def unzip(src_path, dest_path=None, passwords=None):
+    def _do_unzip(src_path, dest_path, password):
+        command = ["unzip"]
+        if password is not None:
+            command.extend(["-P", password])
+        command.extend([src_path, "-d", dest_path])
+        run(command)
+
+    def _do_untar(src_path, dest_path, password):
+        assert False
+
+    unzip_funcs = {
+        "zip": _do_unzip,
+        "tar.gz": _do_untar,
+        "tar.xz": _do_untar,
+    }
+    unzip_func = None
+    # if not found, unzip_func will keep to be None
+    for suffix, f in unzip_funcs.items():
+        if src_path.endswith(suffix):
+            unzip_func = f
+            break
+    
+    if dest_path is None:
+        import lyt_io
+        dest_path = lyt_io.get_path_parent(src_path)
+    if type(passwords) is not list:
+        passwords = [passwords]
+
+    success = False
+    for p in passwords:
+        try:
+            unzip_func(src_path, dest_path, p)
+        except Return_nonzero_exception:
+            continue
+        success = True
+        break
+
+    if not success:
+        raise Return_nonzero_exception()
