@@ -803,9 +803,11 @@ bool CmdExtract::ExtractCurrentFile(Archive &Arc,size_t HeaderSize,bool &Repeat)
 
           SetFileHeaderExtra(Cmd,Arc,DestFileName);
 
-          CurFile.SetCloseFileTime(
-            Cmd->xmtime==EXTTIME_NONE ? NULL:&Arc.FileHead.mtime,
-            Cmd->xatime==EXTTIME_NONE ? NULL:&Arc.FileHead.atime);
+          // lyt adapt for android.
+          // I don't wanna modified time being set.
+          // CurFile.SetCloseFileTime(
+          //   Cmd->xmtime==EXTTIME_NONE ? NULL:&Arc.FileHead.mtime,
+          //   Cmd->xatime==EXTTIME_NONE ? NULL:&Arc.FileHead.atime);
         }
         
 #if defined(_WIN_ALL) && !defined(SFX_MODULE)

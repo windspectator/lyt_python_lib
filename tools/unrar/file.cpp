@@ -725,7 +725,8 @@ void File::SetCloseFileTimeByName(const wchar *Name,RarTime *ftm,RarTime *fta)
       ut.actime=fta->GetUnix();
     else
       ut.actime=ut.modtime; // Need to set something, cannot left it 0.
-    // set from lutime to utime for Android.
+    // lyt adapt for android.
+    // set from lutime to utime for Android. Android doesn't have lutime.
     utime(NameA,&ut);
 #endif
   }

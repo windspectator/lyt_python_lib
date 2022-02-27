@@ -387,7 +387,7 @@ def unzip(src_path, dest_path=None, passwords=None, delete_src=False, quiet=Fals
         if password is not None:
             command.extend(["-P", password])
         command.extend([src_path, "-d", dest_path])
-        run(command)
+        run(command, print_command=not quiet)
 
     def _do_untar(src_path, dest_path, password):
         assert False
@@ -399,7 +399,7 @@ def unzip(src_path, dest_path=None, passwords=None, delete_src=False, quiet=Fals
         command.append(f"-op{dest_path}")
         if quiet:
             command.append("-inul")
-        run(command)
+        run(command, print_command=not quiet)
 
     unzip_funcs = {
         ".zip": _do_unzip,

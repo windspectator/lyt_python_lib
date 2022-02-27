@@ -242,6 +242,8 @@
   #define BIG_ENDIAN
 #endif
 
+// lyt adapt for android.
+// otherwise neither LITTLE_ENDIAN nor BIG_ENDIAN may be defined on android.
 #if !defined(LITTLE_ENDIAN)
 #define LITTLE_ENDIAN
 #endif

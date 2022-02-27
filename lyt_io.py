@@ -67,10 +67,10 @@ def get_path_parent(path):
     return Path(path).resolve().parent.as_posix() + "/"
 
 def get_path_children(path, only_file=False, only_dir=False, recursive=False,
-                      only_name=False, pattern=None):
+                      only_name=False, pattern=None, filter_func=(lambda _ : True)):
     """
     Do not set recursive when you use a pattern,
-    eg. you should pass a pattern like "a/*/c/*.cpp"
+    eg. you should pass a pattern like "a/*/c/*.cpp" or "**/*.py"
     """
     from pathlib import Path
     path = Path(path).resolve()
@@ -91,6 +91,8 @@ def get_path_children(path, only_file=False, only_dir=False, recursive=False,
 
     if not recursive:
         for p in _path_iterate(path):
+            if not filter_func(p):
+                continue
             if only_file and p.is_dir():
                 continue
             if only_dir and not p.is_dir():
@@ -101,6 +103,8 @@ def get_path_children(path, only_file=False, only_dir=False, recursive=False,
     def _get_path_children_recursive(result, cur_path):
         for p in cur_path.iterdir():
             if not p.is_dir():
+                if not filter_func(p):
+                    continue
                 if not only_dir:
                     result.append(_path2str(p))
                 continue
