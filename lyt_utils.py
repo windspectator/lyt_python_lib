@@ -1,7 +1,6 @@
-from ast import Assert
 import sys
 assert sys.version_info[0] >= 3 and sys.version_info[1] >= 7, "need to be run under python 3.7+"
-is_windows = (sys.platform == "win32")     # windows or linux
+is_windows = (sys.platform == "win32")     # windows or linux(android)
 
 class Timeout_exception(Exception):
     pass
@@ -20,7 +19,7 @@ def dye(string, color="violet"):
     color_code = color_list[color]
     r, g, b = [int(color_code[i:i + 2], 16) for i in range(0, 6, 2)]
     COLOR = f"\033[38;2;{r};{g};{b}m"
-    ORIGIN = '\033[0m'
+    ORIGIN = "\033[0m"
 
     return (COLOR + string + ORIGIN)
 
@@ -53,7 +52,7 @@ def try_import(import_name, package_name=None):
     except ModuleNotFoundError:
         pr_notice(f"cannot find {import_name}, please install {package_name} "
                   "to leverage all features")
-        return None        
+        return None
 
 def tqdm(iterable=None, *args, **kargs):
     tqdm_module = try_import("tqdm", "tqdm")
@@ -124,10 +123,10 @@ def set_low_priority():
         os.nice(20)
 
 def run(command, input=None, 
-                return_all=False, return_output=False, return_error=False,
-                print_when_return=False, check_result=True,
-                strip=True, timeout=None, print_command=None, wait=True, shell=False,
-                show_progress=False):
+        return_all=False, return_output=False, return_error=False,
+        print_when_return=False, check_result=True,
+        strip=True, timeout=None, print_command=None, wait=True, shell=False,
+        show_progress=False):
     """
     @command can be a list or string. 
              But when you set shell=True, it must be a string.
@@ -220,14 +219,12 @@ def run_remote(ip, command, input=None, return_output=False, return_error=False,
         strip=strip, timeout=timeout, print_command=print_command
     )
 
-def run_multi_process(process_num):
+def run_multi_process(func, tasks, process_num=6):
     from multiprocessing import Pool
 
-    # TODO
-    assert False
     with Pool(process_num) as pool:
-        r = list(tqdm(pool.imap_unordered(do, files), total=len(files)))
-    return r
+        result = list(tqdm(pool.imap_unordered(func, tasks), total=len(files)))
+    return result
 
 def wait_utill_remote_available(ip):
     pbar = tqdm(desc="trying to connect")
@@ -280,6 +277,20 @@ def pwd():
     import os
     return os.getcwd()
 
+def rm(path, quiet=False):
+    run(["rm", "-r", path], print_command=not quiet)
+
+class work_in:
+    def __init__(self, work_path):
+        self.old_path = pwd()
+        self.new_path = work_path
+
+    def __enter__(self):
+        cd(self.new_path)
+
+    def __exit__(self, *_):
+        cd(self.old_path)
+
 def sorted_arg(seq, key=None):
     """
     sort a sequence and return sorted indexes
@@ -331,9 +342,11 @@ def parse_blocks(lines, block_pattern):
 
     return result
 
-def zip(src_path, dest_path=None, zip_format="zip", password=None):
+def zip(src_path, dest_path=None, zip_format="zip", password=None, delete_src=False, quiet=False):
     def _do_zip(src_path, dest_path, password):
-        command = ["zip"]
+        command = ["zip", "-r"]
+        if quiet:
+            command.append("-q")
         if password is not None:
             command.extend(["-P", password])
         command.extend([dest_path, src_path])
@@ -344,19 +357,33 @@ def zip(src_path, dest_path=None, zip_format="zip", password=None):
 
     zip_funcs = {
         "zip": _do_zip,
-        "rar": _do_tar,
+        "tar": _do_tar,
     }
     zip_func = zip_funcs[zip_format]
+
+    import lyt_io
+    src_dir = lyt_io.get_path_parent(src_path)
+    src_name = lyt_io.get_path_name(src_path)
     if dest_path is None:
-        dest_path = src_path + "." + zip_format
+        dest_path = lyt_io.get_path_stem(src_path) + "." + zip_format
 
-    assert False
-    # deal with the absolute path problem
-    zip_func(src_path, dest_path, password)
+    with work_in(src_dir):
+        zip_func(src_name, dest_path, password)
 
-def unzip(src_path, dest_path=None, passwords=None):
+    if delete_src:
+        rm(src_path)
+
+def unzip(src_path, dest_path=None, passwords=None, delete_src=False, quiet=False,
+          unrar_command="unrar"):
+    """
+    need command "unrar" command if you want to decompress .rar files
+    You can specify how to run unrar in parameter "unrar_command",
+    eg. unrar_command="./path/to/unrar"
+    """
     def _do_unzip(src_path, dest_path, password):
         command = ["unzip"]
+        if quiet:
+            command.append("-qq")
         if password is not None:
             command.extend(["-P", password])
         command.extend([src_path, "-d", dest_path])
@@ -365,10 +392,20 @@ def unzip(src_path, dest_path=None, passwords=None):
     def _do_untar(src_path, dest_path, password):
         assert False
 
+    def _do_unrar(src_path, dest_path, password):
+        command = [unrar_command, "e", src_path]
+        if password is not None:
+            command.append(f"-p{password}")
+        command.append(f"-op{dest_path}")
+        if quiet:
+            command.append("-inul")
+        run(command)
+
     unzip_funcs = {
-        "zip": _do_unzip,
-        "tar.gz": _do_untar,
-        "tar.xz": _do_untar,
+        ".zip": _do_unzip,
+        ".tar.gz": _do_untar,
+        ".tar.xz": _do_untar,
+        ".rar": _do_unrar,
     }
     unzip_func = None
     # if not found, unzip_func will keep to be None
@@ -376,7 +413,7 @@ def unzip(src_path, dest_path=None, passwords=None):
         if src_path.endswith(suffix):
             unzip_func = f
             break
-    
+
     if dest_path is None:
         import lyt_io
         dest_path = lyt_io.get_path_parent(src_path)
@@ -394,3 +431,6 @@ def unzip(src_path, dest_path=None, passwords=None):
 
     if not success:
         raise Return_nonzero_exception()
+
+    if delete_src:
+        rm(src_path)
