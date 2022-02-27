@@ -69,8 +69,8 @@ def get_path_parent(path):
 def get_path_children(path, only_file=False, only_dir=False, recursive=False,
                       only_name=False, pattern=None):
     """
-    no need to set recursive when you use a pattern!
-    eg. you can pass pattern like "a/*/c/*.cpp"
+    Do not set recursive when you use a pattern,
+    eg. you should pass a pattern like "a/*/c/*.cpp"
     """
     from pathlib import Path
     path = Path(path).resolve()

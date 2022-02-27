@@ -223,7 +223,7 @@ def run_multi_process(func, tasks, process_num=6):
     from multiprocessing import Pool
 
     with Pool(process_num) as pool:
-        result = list(tqdm(pool.imap_unordered(func, tasks), total=len(files)))
+        result = list(tqdm(pool.imap_unordered(func, tasks), total=len(tasks)))
     return result
 
 def wait_utill_remote_available(ip):
