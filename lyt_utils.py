@@ -50,8 +50,8 @@ def try_import(import_name, package_name=None):
     try:
         return __import__(import_name)
     except ModuleNotFoundError:
-        pr_notice(f"cannot find {import_name}, please install {package_name} "
-                  "to leverage all features")
+        pr_info(f"cannot find {import_name}, please install {package_name} "
+                "to leverage all features")
         return None
 
 def tqdm(iterable=None, *args, **kargs):
@@ -229,30 +229,23 @@ def run_multi_process(func, tasks, process_num=6):
 def wait_utill_remote_available(ip):
     pbar = tqdm(desc="trying to connect")
     while True:
-        if pbar:
+        if pbar is not None:
             pbar.update(1)
         try:
             run_remote(ip, "echo hello", return_output=True, return_error=True, timeout=5)
             break
         except (Return_nonzero_exception, Timeout_exception):
             sleep(1)
-    if pbar:
+    if pbar is not None:
         pbar.close()
     print(f"{ip} is now available")
 
 def reboot_and_wait(ip, boot_entry=None):
     if boot_entry is not None:
         print_in_color(f"will reboot throgh entry: {boot_entry}")
-    raw_line_start = "saved_entry="
-    def change_default_boot_line(line):
-        if line.startswith(raw_line_start):
-            return raw_line_start + boot_entry
-        else:
-            return line
 
-    import lyt_io
     if boot_entry:
-        lyt_io.edit_file_by_line_remote(ip, "/boot/grub2/grubenv", change_default_boot_line)
+        run_remote(ip, f"grub2-editenv - set saved_entry='{boot_entry}'")
     try:
         run_remote(ip, "reboot")
     except Return_nonzero_exception:
@@ -275,10 +268,39 @@ def cd(path):
 
 def pwd():
     import os
-    return os.getcwd()
+    import lyt_io
+    return lyt_io.format_folder(os.getcwd())
 
-def rm(path, quiet=False):
-    run(["rm", "-r", path], print_command=not quiet)
+def cp(src, dest):
+    run(["cp", "-r", src, dest])
+
+def mv(src, dest):
+    run(["mv", src, dest])
+
+def mkdir(path, exist_ok=True):
+    """
+    this function can create multiple-level folders
+    """
+    import os
+    os.makedirs(path, exist_ok=exist_ok)
+
+def rm(path, quiet=False, not_exist_ok=False):
+    if not not_exist_ok:
+        import lyt_io
+        lyt_io.assert_path_exist(path)
+    run(["rm", "-rf", path], print_command=not quiet)
+
+def get_env(env_name):
+    import os
+    return os.environ[env_name]
+
+def get_lib_root():
+    import lyt_io
+    return lyt_io.get_path_parent(__file__, repeat=2)
+
+def get_home():
+    import lyt_io
+    return lyt_io.format_folder(get_env("HOME"))
 
 class work_in:
     def __init__(self, work_path):
@@ -352,12 +374,20 @@ def zip(src_path, dest_path=None, zip_format="zip", password=None, delete_src=Fa
         command.extend([dest_path, src_path])
         run(command)
 
-    def _do_tar(src_path, dest_path, password):
-        assert False
+    def _do_tar_bz2(src_path, dest_path, password):
+        assert password is None
+        command = ["tar", "-cjSf", dest_path, src_path]
+        run(command)
+    
+    def _do_tar_gz(src_path, dest_path, password):
+        assert password is None
+        command = ["tar", "-czvf", dest_path, src_path]
+        run(command)
 
     zip_funcs = {
         "zip": _do_zip,
-        "tar": _do_tar,
+        "tar.bz2": _do_tar_bz2,
+        "tar.gz": _do_tar_gz
     }
     zip_func = zip_funcs[zip_format]
 

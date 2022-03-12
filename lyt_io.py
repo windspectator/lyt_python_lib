@@ -50,6 +50,14 @@ def save_json(name, data):
     with open(name, 'w', encoding="utf-8") as f:
         json.dump(data, f)
 
+def load_csv(name, delimiter=","):
+    data = load_txt(name)
+    return [x.split(delimiter) for x in data]
+
+def format_folder(path):
+    if not path.endswith("/"):
+        return path + "/"
+
 def get_path(path):
     from pathlib import Path
     return Path(path).resolve().as_posix()
@@ -62,15 +70,20 @@ def get_path_stem(path):
     from pathlib import Path
     return Path(path).stem
 
-def get_path_parent(path):
+def get_path_parent(path, repeat=1):
     from pathlib import Path
-    return Path(path).resolve().parent.as_posix() + "/"
+    path = Path(path).resolve()
+    for _ in range(repeat):
+        path = path.parent
+    return format_folder(path.as_posix())
 
 def get_path_children(path, only_file=False, only_dir=False, recursive=False,
                       only_name=False, pattern=None, filter_func=(lambda _ : True)):
     """
     Do not set recursive when you use a pattern,
-    eg. you should pass a pattern like "a/*/c/*.cpp" or "**/*.py"
+    eg. you should pass a pattern like "a\*\c\*.cpp" or "**\*.py" (ignore slash directions)
+
+    @only_name: return name but not full path
     """
     from pathlib import Path
     path = Path(path).resolve()
@@ -119,16 +132,25 @@ def get_path_children(path, only_file=False, only_dir=False, recursive=False,
     return _get_path_children_recursive(result, path)
 
 def get_path_subdirs(path):
-    from pathlib import Path
-    return [x.as_posix() for x in Path(path).resolve().iterdir() if x.is_dir()]
+    return get_path_children(path, only_dir=True)
+
+def get_path_subfiles(path):
+    return get_path_children(path, only_file=True)
 
 def is_path_exist(path):
     from pathlib import Path
     return Path(path).exists()
 
-def mkdirs(path):
+def assert_path_exist(path):
+    if not is_path_exist(path):
+        raise FileNotFoundError()
+
+def mkdirs(path, exist_ok=True):
+    """
+    deprecated!
+    """
     import os
-    os.makedirs(path, exist_ok=True)
+    os.makedirs(path, exist_ok=exist_ok)
 
 def edit_file_by_line(src, func, dst=None):
     if dst is None:

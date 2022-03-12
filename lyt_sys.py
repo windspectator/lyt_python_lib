@@ -111,3 +111,10 @@ def get_pid(pname=None):
 
 def get_smaps(pid):
     pass
+
+def get_file_size(path):
+    """
+    returned size is in KB
+    """
+    result = l.run(["du", "-s", path], return_output=True)[0]
+    return int(result.split()[0])
