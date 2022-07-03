@@ -217,11 +217,33 @@ def _get_grub_cfg(path: str, remote: bool = False):
         ...
     }
     """
-    import lyt_io
+    def __parse_grub_cfg_block(block: List[str]):
+        name = block[0].split("'")[1]
+        stats = {}
+        for line in block:
+            if line.startswith("linux"):
+                _, stats["vmlinux"], stats["append"] = line.split(maxsplit=2)
+                continue
 
+            if line.startswith("initrd"):
+                _, stats["initrd"] = line.split()
+                continue
+            pass
+
+        return name, stats
+
+    import lyt_io
+    import lyt_utils
+
+    result = {}
     lines = lyt_io.load_txt(path, remote=remote)
-    # print(len(lines))
-    # TODO
+    blocks = lyt_utils.parse_blocks(lines, start_pattern="menuentry", end_pattern="}")
+    for i, b in enumerate(blocks):
+        name, stats = __parse_grub_cfg_block(b)
+        stats["id"] = i
+        result[name] = stats
+
+    return result
 
 grub_paths = [
     "/boot/efi/EFI/EulerOS/grub.cfg",
@@ -245,11 +267,6 @@ def get_grub_cfg(ip: str = None):
         break
 
     return _get_grub_cfg(grub_path, remote=remote)
-
-def get_grub_cfg_remote(ip):
-    """
-
-    """
 
 # alias
 pids = get_all_pids

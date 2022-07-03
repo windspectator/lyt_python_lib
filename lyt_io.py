@@ -96,6 +96,13 @@ def load_txt(
     with temp_file_remote(name) as fname:
         return _load_txt(fname, strip=strip, start_from=start_from, stop_at=stop_at)
 
+def load_txt_remote(
+        path: str, strip: bool = True, start_from: str = None, stop_at: str = None
+    ) -> List[str]:
+    return load_txt(
+        path, remote=True, strip=strip, start_from=start_from, stop_at=stop_at
+    )
+
 def save_txt(name: str, data: Union[List[str], str]):
     with open(name, 'w', encoding="utf-8") as f:
         if type(data) is str:

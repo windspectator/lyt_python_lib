@@ -37,8 +37,8 @@ def dye(string: str, color: str = "violet") -> str:
     return (COLOR + string + ORIGIN)
 
 def print_in_color(
-        string: str, color: str = "violet", prefix: str = "", suffix: str = ""
-    ) -> None:
+    string: str, color: str = "violet", prefix: str = "", suffix: str = ""
+) -> None:
     if type(string) is list:
         string = " ".join(string)
 
@@ -146,8 +146,8 @@ def tic() -> None:
     _timer = time()
 
 def toc(
-        print_time: bool = True, reset_timer: bool = True, return_str: bool = True
-    ) -> Union[float, str]:
+    print_time: bool = True, reset_timer: bool = True, return_str: bool = True
+) -> Union[float, str]:
     global _timer
     cur_time = time()
     elasped_time = cur_time - _timer
@@ -193,9 +193,9 @@ def set_low_priority() -> None:
         os.nice(20)
 
 def _run_print_when_return(
-        command: List[str], input: List[str], return_error: bool,
-        check_result: bool, strip: bool
-    ) -> Union[None, List[str], Tuple[List[str], List[str]]]:
+    command: List[str], input: List[str], return_error: bool,
+    check_result: bool, strip: bool
+) -> Union[None, List[str], Tuple[List[str], List[str]]]:
     """
     Warning: this function may hang when wait() for subprocess to finish.
 
@@ -238,12 +238,12 @@ def _run_print_when_return(
     return output
 
 def run(
-        command: Union[str, List[str]], input: List[str] = None,
-        return_all: bool = False, return_output: bool = False, return_error: bool = False,
-        print_when_return: bool = False, check_result: bool = True,
-        strip: bool = True, timeout: float = None, print_command: bool = None,
-        wait: bool = True, shell: bool = False
-    ) -> Union[None, List[str], Tuple[List[str], List[str]]]:
+    command: Union[str, List[str]], input: List[str] = None,
+    return_all: bool = False, return_output: bool = False, return_error: bool = False,
+    print_when_return: bool = False, check_result: bool = True,
+    strip: bool = True, timeout: float = None, print_command: bool = None,
+    wait: bool = True, shell: bool = False
+) -> Union[None, List[str], Tuple[List[str], List[str]]]:
     """
     @command can be a list or string. 
              But when you set shell=True, it must be a string.
@@ -273,6 +273,7 @@ def run(
 
     if print_when_return:
         assert timeout is None
+        assert not shell
         return _run_print_when_return(command, input, return_error, check_result, strip)
 
     import subprocess
@@ -321,12 +322,12 @@ def run(
         return error
 
 def get(
-        command: Union[str, List[str]], input: List[str] = None,
-        return_error: bool = False,
-        print_when_return: bool = False, check_result: bool = True,
-        strip: bool = True, timeout: float = None, print_command: bool = None,
-        wait: bool = True, shell: bool = False
-    ) -> Union[None, List[str], Tuple[List[str], List[str]]]:
+    command: Union[str, List[str]], input: List[str] = None,
+    return_error: bool = False,
+    print_when_return: bool = False, check_result: bool = True,
+    strip: bool = True, timeout: float = None, print_command: bool = None,
+    wait: bool = True, shell: bool = False
+) -> Union[List[str], Tuple[List[str], List[str]]]:
     return run(
         command, return_output=True, return_error=return_error,
         input=input, print_when_return=print_when_return, check_result=check_result,
@@ -335,11 +336,11 @@ def get(
     )
 
 def run_remote(
-        ip: str, command: str, input: str = None,
-        return_all: bool = False, return_output: bool = False, return_error: bool = False,
-        strip: bool = True, timeout: float = None,
-        print_command: bool = True
-    ) -> Union[None, List[str], Tuple[List[str], List[str]]]:
+    ip: str, command: str, input: str = None,
+    return_all: bool = False, return_output: bool = False, return_error: bool = False,
+    check_result: bool = True, strip: bool = True, timeout: float = None,
+    print_command: bool = True
+) -> Union[None, List[str], Tuple[List[str], List[str]]]:
     """
     @command cannot be a list
     """
@@ -347,7 +348,51 @@ def run_remote(
         ["ssh", ip, command],
         input=input,
         return_all=return_all, return_output=return_output, return_error=return_error,
+        check_result=check_result,
         strip=strip, timeout=timeout, print_command=print_command
+    )
+
+def get_remote(
+    ip: str, command: Union[str, List[str]], input: List[str] = None,
+    return_error: bool = False, check_result: bool = True,
+    strip: bool = True, timeout: float = None, print_command: bool = None
+) -> Union[List[str], Tuple[List[str], List[str]]]:
+    return run_remote(
+        ip, command, return_output=True, return_error=return_error,
+        input=input, check_result=check_result,
+        strip=strip, timeout=timeout, print_command=print_command
+    )
+
+def run_shell(
+    command: str, ip: str = None, input: str = None,
+    return_all: bool = False, return_output: bool = False, return_error: bool = False,
+    check_result: bool = True, strip: bool = True, timeout: float = None,
+    print_command: bool = True
+) -> Union[None, List[str], Tuple[List[str], List[str]]]:
+    if ip is None:
+        return run(
+            command, input=input,
+            return_all=return_all, return_output=return_output, return_error=return_error,
+            check_result=check_result, strip=strip, timeout=timeout,
+            print_command=print_command, shell=True
+        )
+    else:
+        return run_remote(
+            ip, command, input=input,
+            return_all=return_all, return_output=return_output, return_error=return_error,
+            check_result=check_result, strip=strip, timeout=timeout,
+            print_command=print_command
+        )
+
+def get_shell(
+    command: str, ip: str = None, input: str = None, return_error: bool = False,
+    check_result: bool = True, strip: bool = True, timeout: float = None,
+    print_command: bool = True
+) -> Union[List[str], Tuple[List[str], List[str]]]:
+    return run_shell(
+        command, ip=ip, input=input, return_output=True, return_error=return_error,
+        check_result=check_result, strip=strip, timeout=timeout,
+        print_command=print_command
     )
 
 def whoami() -> str:
@@ -359,7 +404,7 @@ def i_am_root() -> bool:
 
 def run_sudo(command: str, password: str = "qwe123!@#", print_command: bool = True) -> None:
     if i_am_root():
-        run(command)
+        run_shell(command)
         return
 
     if print_command:
@@ -382,9 +427,9 @@ def run_sudo(command: str, password: str = "qwe123!@#", print_command: bool = Tr
         run(["expect", p], print_command=False)
 
 def ssh(
-        ip: str, password: str = None, command: str = None, port: int = None,
-        timeout: int = 5, wait: bool = True, print_command: bool = True
-    ) -> None:
+    ip: str, password: str = None, command: str = None, port: int = None,
+    timeout: int = 5, wait: bool = True, print_command: bool = True
+) -> None:
     """
     Use this function when you need to run commands on remote machine with password.
     """
@@ -461,11 +506,11 @@ def ssh(
             run(["expect", p], print_command=False)
 
 def scp(
-        src: str, dest: str,
-        password: str = None, port: int = None,
-        timeout: int = 5, wait: bool = True,
-        print_command: bool = None, return_all: bool = False
-    ) -> None:
+    src: str, dest: str,
+    password: str = None, port: int = None,
+    timeout: int = 5, wait: bool = True,
+    print_command: bool = None, return_all: bool = False
+) -> None:
     if password is None:
         password = "Huawei12#$"
     if port is None:
@@ -523,19 +568,9 @@ def add_id_rsa(ip, password=None):
     import lyt_io
     pub_key = lyt_io.load_txt(get_lib_root() + "config/authorized_keys")[0]
     ssh(ip, command="mkdir -p ~/.ssh", password=password)
-    # try:
-    #     temp_dir = lyt_io.get_temp_dir()
-    #     scp(f"{ip}:~/.ssh/authorized_keys", temp_dir, password=password)
-    #     added_keys = lyt_io.load_txt(TODO)
-    # except Return_nonzero_exception:
-    #     added_keys = []
-
-    # try:
-    #     added_keys = run_remote(ip, "echo ~/.ssh/authorized_keys")
-    # except Return_nonzero_exception:
-    #     added_keys = []
-    # if pub_key in added_keys:
-    #     return
+    added_keys = lyt_io.load_txt_remote(f"{ip}:~/.ssh/authorized_keys")
+    if pub_key in added_keys:
+        return
     ssh(ip, command=f'echo "{pub_key}" >> ~/.ssh/authorized_keys', password=password)
 
 def run_multi_process(func: Callable, tasks: List, process_num: int = 6) -> List:
@@ -561,10 +596,23 @@ def wait_until_remote_available(ip: str) -> None:
         pbar.close()
     print(f"{ip} is now available")
 
+def findmnt(path, ip=None) -> str:
+    return get_shell(f"findmnt {path} -o TARGET -n", ip=ip)
+
+def kexec(ip: str = None, boot_entry: str = None) -> None:
+    import lyt_io
+
+    remote = (ip is not None)
+    if boot_entry is None:
+        cmdline = lyt_io.load_txt("/proc/cmdline", remote=remote)[0]
+        cur_vmlinux = cmdline.split()[0].split("=")[1]
+        # TODO
+
+
 def kexec_and_wait(ip: str, boot_entry: str = None) -> None:
     pass
 
-def reboot_and_wait(ip: str, boot_entry: str = None, quick=True) -> None:
+def reboot_and_wait(ip: str, boot_entry: str = None, quick: bool = True) -> None:
     if boot_entry is not None:
         pr_info(f"will reboot throgh entry: {boot_entry}")
 
@@ -605,8 +653,8 @@ def cp(src: str, dest: str) -> None:
     run(["cp", "-r", src, dest])
 
 def mkdir(
-        path: str, exist_ok: bool = True, tmpfs: bool = False, size: int = 128
-    ) -> None:
+    path: str, exist_ok: bool = True, tmpfs: bool = False, size: int = 128
+) -> None:
     """
     this function can create multiple-level folders
     """
@@ -619,8 +667,8 @@ def mkdir(
         run_sudo(f"mount -t tmpfs -o size={size}g lyt_temp {path}")
 
 def rm_one(
-        path: str, quiet: bool = False, not_exist_ok: bool = False, tmpfs: bool = False
-    ) -> None:
+    path: str, quiet: bool = False, not_exist_ok: bool = False, tmpfs: bool = False
+) -> None:
     import lyt_io
     if not lyt_io.is_path_exist:
         assert not_exist_ok
@@ -637,9 +685,9 @@ def rm_one(
         rm_one(path, quiet=quiet, not_exist_ok=not_exist_ok, tmpfs=True)
 
 def rm(
-        path: Union[str, List[str]], quiet: bool = False, not_exist_ok: bool = False,
-        tmpfs: bool = False
-    ) -> None:
+    path: Union[str, List[str]], quiet: bool = False, not_exist_ok: bool = False,
+    tmpfs: bool = False
+) -> None:
     if type(path) is str:
         rm_one(path, quiet=quiet, not_exist_ok=not_exist_ok, tmpfs=tmpfs)
         return
@@ -729,8 +777,8 @@ def get_ip_address(ip_prefix: str = None) -> List[str]:
     return results
 
 def parse_blocks(
-        lines: List[str], start_pattern: str = None, end_pattern: str = None
-    ) -> List[List[str]]:
+    lines: List[str], start_pattern: str = None, end_pattern: str = None
+) -> List[List[str]]:
     """
     WARNING: not tested!
 
@@ -768,9 +816,9 @@ def parse_blocks(
     return result
 
 def zip(
-        src_path: str, dest_path: bool = None, zip_format: str = "zip",
-        password: str = None, delete_src: bool = False, quiet:bool = False
-    ) -> None:
+    src_path: str, dest_path: bool = None, zip_format: str = "zip",
+    password: str = None, delete_src: bool = False, quiet:bool = False
+) -> None:
     def _do_zip(src_path, dest_path):
         command = ["zip", "-r"]
         if quiet:
@@ -816,9 +864,9 @@ def zip(
         rm(src_path)
 
 def unzip(
-        src_path: str, dest_path: str = None, passwords: str = None,
-        delete_src: bool = False, quiet: bool = False, unrar_command: str = "unrar"
-    ) -> None:
+    src_path: str, dest_path: str = None, passwords: str = None,
+    delete_src: bool = False, quiet: bool = False, unrar_command: str = "unrar"
+) -> None:
     """
     need command "unrar" command if you want to decompress .rar files
     You can specify how to run unrar in parameter "unrar_command",
@@ -931,6 +979,7 @@ def get_file_euler_auther(path) -> str:
         line = line.strip()
         if line.startswith("Signed-off-by: "):
             return try_find_name(line[15:])
+    return None
 
 def get_element(data: Mapping, *args: any) -> any:
     try:
