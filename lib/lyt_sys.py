@@ -204,19 +204,7 @@ def get_zswap() -> Dict[str, int]:
 
     return result
 
-def _get_grub_cfg(path: str, remote: bool = False):
-    """
-    returns a dictinary: {
-        entry_name1: {
-            id: ...,
-            vmlinux: ...,
-            append: ...,
-            initrd: ...,
-        },
-        entry_name2: ...,
-        ...
-    }
-    """
+def _get_grub_cfg(path: str, remote: bool = False) -> Dict[str, Dict[str, str]]:
     def __parse_grub_cfg_block(block: List[str]):
         name = block[0].split("'")[1]
         stats = {}
@@ -237,7 +225,7 @@ def _get_grub_cfg(path: str, remote: bool = False):
 
     result = {}
     lines = lyt_io.load_txt(path, remote=remote)
-    blocks = lyt_utils.parse_blocks(lines, start_pattern="menuentry", end_pattern="}")
+    blocks = lyt_utils.parse_blocks(lines, start_pattern="menuentry ", end_pattern="}")
     for i, b in enumerate(blocks):
         name, stats = __parse_grub_cfg_block(b)
         stats["id"] = i
@@ -245,20 +233,44 @@ def _get_grub_cfg(path: str, remote: bool = False):
 
     return result
 
-grub_paths = [
-    "/boot/efi/EFI/EulerOS/grub.cfg",
-    "/boot/grub2/grub.cfg",
-    "/boot/efi/EFI/openEuler/grub.cfg",
-]
-def get_grub_cfg(ip: str = None):
+grub_paths = {
+    "x86" : [
+        "/boot/grub2/grub.cfg",
+        "/boot/efi/EFI/EulerOS/grub.cfg",
+        "/boot/efi/EFI/openEuler/grub.cfg",
+    ],
+    "arm" : [
+        "/boot/efi/EFI/EulerOS/grub.cfg",
+        "/boot/efi/EFI/openEuler/grub.cfg",
+        "/boot/grub2/grub.cfg",
+    ],
+}
+def get_grub_cfg(
+    path: str = None, ip: str = None, arch: str = None
+) -> Dict[str, Dict[str, str]]:
     """
-    if remote is set, you should pass remote ip in parameter 'path'
+    returns a dictinary: {
+        entry_name1: {
+            id: ...,
+            vmlinux: ...,
+            append: ...,
+            initrd: ...,
+        },
+        entry_name2: ...,
+        ...
+    }
     """
     import lyt_io
 
-    remote = (ip is not None)
+    if path is not None:
+        return _get_grub_cfg(path)
+
+    if arch is None:
+        arch = "x86"
+
     grub_path = None
-    for p in grub_paths:
+    remote = (ip is not None)
+    for p in grub_paths[arch]:
         if remote:
             p = f"{ip}:{p}"
         if not lyt_io.is_path_exist(p, remote=remote):
@@ -268,9 +280,43 @@ def get_grub_cfg(ip: str = None):
 
     return _get_grub_cfg(grub_path, remote=remote)
 
+def free() -> Dict[str, int]:
+    """
+    size is counted by KB
+    returns a dictinary: {
+        total: ...,
+        used: ...,
+        free: ...,
+        shared: ...,
+        buff/cache: ...,
+        available: ...,
+        buffers: ...,
+        cache: ...,
+        swap_total: ...,
+        swap_used: ...,
+        swap_free: ...,
+    }
+    """
+    lines = l.run("free -w", return_output=True)
+    result = {}
+    blocks = lines[1].split()
+    result["total"] = int(blocks[1])
+    result["used"] = int(blocks[2])
+    result["free"] = int(blocks[3])
+    result["shared"] = int(blocks[4])
+    result["buffers"] = int(blocks[5])
+    result["cache"] = int(blocks[6])
+    result["available"] = int(blocks[7])
+    result["buff/cache"] = result["buffers"] + result["cache"]
+    blocks = lines[2].split()
+    result["swap_total"] = int(blocks[1])
+    result["swap_used"] = int(blocks[2])
+    result["swap_free"] = int(blocks[3])
+
+    return result
+
 # alias
 pids = get_all_pids
 smaps = get_smaps
 pid = get_pid
 pname = get_pname
-

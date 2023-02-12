@@ -1,6 +1,6 @@
 from typing import List, Callable, Union
 
-def get_temp_dir() -> str:
+def get_temp_root() -> str:
     """
     this function will create folder for you
     """
@@ -10,19 +10,29 @@ def get_temp_dir() -> str:
     lyt_utils.mkdir(dir)
     return dir
 
-def get_temp_path(name: str = None) -> str:
+def _timestamp() -> str:
+    import time
+    return str(int(10000000000*time.time()))
+
+def get_temp_path(name: str = None, f_depth: int = 1) -> str:
     """
     this function will create folder for you
     """
     import lyt_utils
-    f_name = lyt_utils.get_caller_name()
-    if name:
+    f_name = _timestamp() + "__" + lyt_utils.get_caller_name(depth=f_depth)
+    if name is not None:
         f_name += f"__{name}"
-    return get_temp_dir() + f_name
+    return get_temp_root() + f_name
+
+def get_temp_dir_path():
+    import lyt_utils
+    p = get_temp_path() + "/"
+    lyt_utils.mkdir(p)
+    return p
 
 class temp_file:
     def __init__(self, data: Union[List[str], str], name: str = None):
-        self.f_path = get_temp_path(type(self).__name__)
+        self.f_path = get_temp_path(name, f_depth=2)
         save_txt(self.f_path, data)
 
     def __enter__(self):
@@ -35,7 +45,7 @@ class temp_file:
 class temp_file_remote:
     def __init__(self, remote_path: str, name: str = None):
         import lyt_utils
-        self.f_path = get_temp_path(type(self).__name__)
+        self.f_path = get_temp_path(name, f_depth=2)
         lyt_utils.scp(remote_path, self.f_path, return_all=True)
     
     def clean(self):
@@ -103,15 +113,31 @@ def load_txt_remote(
         path, remote=True, strip=strip, start_from=start_from, stop_at=stop_at
     )
 
-def save_txt(name: str, data: Union[List[str], str]):
-    with open(name, 'w', encoding="utf-8") as f:
-        if type(data) is str:
-            f.write(data)
-            return
+def _save_txt(name: str, data: Union[List[str], str]) -> None:
+    if type(data) is str:
+        data = [data]
 
+    with open(name, 'w', encoding="utf-8") as f:
         for d in data:
             f.write(d)
             f.write('\n')
+
+def save_txt(name: str, data: Union[List[str], str], remote: bool = False) -> None:
+    if not remote:
+        _save_txt(name, data=data)
+        return
+    
+    import lyt_utils
+    with temp_file(data) as fname:
+        lyt_utils.scp(fname, name, return_all=True)
+
+def insert_txt(name: str, line_index: int, data: Union[List[str], str]) -> None:
+    if type(data) is str:
+        data = [data]
+
+    lines = load_txt(name, strip=False)
+    lines[line_index:line_index] = data
+    save_txt(name, lines)
 
 def load_json(name):
     import json
@@ -126,6 +152,54 @@ def save_json(name, data):
 def load_csv(name, delimiter=","):
     data = load_txt(name)
     return [x.split(delimiter) for x in data]
+
+def save_excel(
+    path: str, data: List[List], sheet_name: str = "main", queit: bool = False
+) -> None:
+    """
+    path should be end with .xlsx
+
+    if you need to save only one sheet, sheet_content should be like:
+        [
+            [data_1_1, data_1_2, ..., data_1_n],
+            [data_2_1, data_2_2, ..., data_2_n],
+            ...
+            [data_m_1, data_m_2, ..., data_m_n],
+        ]
+    Every element should be string or None.
+    In this mode, you can set your single sheet's name in param sheet_name.
+
+    If you need to save multiple sheets, use following format:
+        [
+            [sheet_name_1, [sheet_content_1]],
+            [sheet_name_2, [sheet_content_2]],
+            ...,
+            [sheet_name_n, [sheet_content_n]],
+        ]
+    """
+    import openpyxl
+    import lyt_utils
+
+    stump = lyt_utils.get_element(data, 0, 1)
+    if type(stump) is str or not lyt_utils.is_iterable(stump):
+        data = [[sheet_name, data]]
+
+    tqdm = (lambda x : x) if queit else lyt_utils.tqdm
+    wb = openpyxl.Workbook()
+    for i, (name, value) in enumerate(data):
+        if i == 0:
+            ws = wb.worksheets[0]
+            ws.title = name
+        else:
+            ws = wb.create_sheet(name)
+
+        for j, line in tqdm(enumerate(value)):
+            for k, e in enumerate(line):
+                if e is None:
+                    continue
+                ws.cell(j + 1, k + 1).value = e
+
+    wb.save(filename=path)
 
 def format_folder(path):
     if not path.endswith("/"):
@@ -163,7 +237,7 @@ def get_path_children(
     ) -> List[str]:
     """
     Do not set recursive when you use a pattern,
-    eg. you should pass a pattern like "a\*\c\*.cpp" or "**\*.py" (ignore slash directions)
+    eg. you should pass a pattern like "a/* /c/*.cpp" or "** /*.py" (ignore space)
 
     @only_name: return name but not full path
     """
@@ -183,6 +257,7 @@ def get_path_children(
     else:
         def _path_iterate(path):
             return path.glob(pattern)
+        assert recursive is False
 
     if not recursive:
         for p in _path_iterate(path):
@@ -224,7 +299,7 @@ def is_path_exist_remote(path: str):
     ip, remote_path = path.split(":", maxsplit=1)
     try:
         lyt_utils.run_remote(
-            ip, f"test -f {remote_path}", print_command=False, return_all=True
+            ip, f"test -e {remote_path}", print_command=False, return_all=True
         )
         return True
     except lyt_utils.Return_nonzero_exception:
@@ -248,11 +323,11 @@ def mkdirs(path, exist_ok=True):
     import os
     os.makedirs(path, exist_ok=exist_ok)
 
-def edit_file_by_line(src: str, func: Callable, dst: str = None) -> int:
+def edit_file_by_line(src: str, func: Callable, dst: str = None, remote: bool = False) -> int:
     if dst is None:
         dst = src
 
-    src_lines = load_txt(src, strip=False)
+    src_lines = load_txt(src, strip=False, remote=remote)
     dst_lines = []
     for line in src_lines:
         new_line = func(line)
@@ -262,18 +337,10 @@ def edit_file_by_line(src: str, func: Callable, dst: str = None) -> int:
             dst_lines.append(new_line)
         else:
             dst_lines.extend(new_line)
-    save_txt(dst, dst_lines)
+    save_txt(dst, dst_lines, remote=remote)
     return len(dst_lines) - len(src_lines)
 
 def edit_file_by_line_remote(vm_ip, src, func, dst=None):
     if dst is None:
         dst = src
-    tmp_root = "/home/liuyuntao/temp/"
-    tmp_src = tmp_root + "tmp_src"
-    tmp_dst = tmp_root + "tmp_dst"
-    mkdirs(tmp_root)
-
-    import lyt_utils
-    lyt_utils.run(f"scp {vm_ip}:{src} {tmp_src}")
-    edit_file_by_line(tmp_src, func, dst=tmp_dst)
-    lyt_utils.run(f"scp {tmp_dst} {vm_ip}:{dst}")
+    return edit_file_by_line(f"{vm_ip}:{src}", func=func, dst=f"{vm_ip}:{dst}", remote=True)

@@ -1,84 +1,31 @@
 from typing import Union, List, Callable, Tuple, Iterable, Mapping
-from types import ModuleType
-import sys
-assert sys.version_info[0] >= 3 and sys.version_info[1] >= 7, "need to be run under python 3.7+"
-is_windows = (sys.platform == "win32")     # windows or linux(android)
-platform = "linux"
-if is_windows:
-    platform = "windows"
 
-class Timeout_exception(Exception):
-    def __init__(self, raw_exception, output: str = None, error: str = None) -> None:
-        super().__init__(raw_exception)
-        self.output = output
-        self.error = error
+from base import is_windows, platform, try_import
+from lyt_print import dye, print_in_color, \
+    pr_error, pr_warn, pr_notice, pr_info, pr_debug, pr_command
+from exception import Timeout_exception, Return_nonzero_exception
+from run import run, get, run_remote, get_remote, run_shell, get_shell
 
-class Return_nonzero_exception(Exception):
-    def __init__(self, ret: int, output: str = None, error: str = None) -> None:
-        super().__init__()
-        self.ret = ret
-        self.output = output
-        self.error = error
-
-def dye(string: str, color: str = "violet") -> str:
-    color_list = {
-        "violet": "8700A8",
-        "red": "A31515",
-        "orange": "D75F00",
-        "green": "22855C",
-        "black": "000000",
-        "brown": "8B573A",
-    }
-    color_code = color_list[color]
-    r, g, b = [int(color_code[i:i + 2], 16) for i in range(0, 6, 2)]
-    COLOR = f"\033[38;2;{r};{g};{b}m"
-    ORIGIN = "\033[0m"
-
-    return (COLOR + string + ORIGIN)
-
-def print_in_color(
-    string: str, color: str = "violet", prefix: str = "", suffix: str = ""
-) -> None:
-    if type(string) is list:
-        string = " ".join(string)
-
-    print(prefix + dye(string, color=color) + suffix)
-
-def pr_error(string: str, prefix: str = "", suffix: str = "") -> None:
-    print_in_color(string, color="red", prefix=prefix, suffix=suffix)
-
-def pr_warn(string: str, prefix: str = "", suffix: str = "") -> None:
-    print_in_color(string, color="orange", prefix=prefix, suffix=suffix)
-
-def pr_notice(string: str, prefix: str = "", suffix: str = "") -> None:
-    print_in_color(string, color="violet", prefix=prefix, suffix=suffix)
-
-def pr_info(string: str, prefix: str = "", suffix: str = "") -> None:
-    print_in_color(string, color="green", prefix=prefix, suffix=suffix)
-
-def pr_debug(string: str, prefix: str = "", suffix: str = "") -> None:
-    print_in_color(string, color="black", prefix=prefix, suffix=suffix)
-
-def pr_command(command: str) -> None:
-    pr_notice(command, prefix="-----> ", suffix=" <-----")
-
-def try_import(import_name: str, package_name: str = None) -> ModuleType:
-    if package_name is None:
-        package_name = import_name
-    try:
-        return __import__(import_name)
-    except ModuleNotFoundError:
-        pr_info(f"cannot find {import_name}, please install {package_name} "
-                "to leverage all features")
-        return None
-
-def get_terminal_size() -> Tuple[int, int]:
+def get_terminal_size() -> List[int]:
     """
     returns (width, height)
     """
     import os
-    size = os.get_terminal_size()
-    return (size[0], size[1])
+    try:
+        size = os.get_terminal_size()
+    except OSError:
+        return (80, 24)
+    return [size[0], size[1]]
+
+def get_terminal_size_hw() -> List[int]:
+    return reversed(get_terminal_size())
+
+def is_iterable(obj) -> bool:
+    try:
+        iter(obj)
+        return True
+    except TypeError:
+        return False
 
 class lyt_tqdm():
     def __init__(self, iterable: Iterable = None):
@@ -100,6 +47,7 @@ class lyt_tqdm():
         else:
             progress_len = int(bar_len * progress)
             text = '[' + '|' * progress_len + '-' * (bar_len - progress_len) + ']'
+        import sys
         print('\r', text, "{0:.1%}".format(progress), end='\r', file=sys.stderr)
         if (self.task_done == self.task_len):
             print()
@@ -116,14 +64,17 @@ class lyt_tqdm():
         self.task_done += 1
         self.print_progress_bar()
         return next_item
+    
+    def close(self):
+        print()
 
 def tqdm(iterable: Iterable=None, *args, **kargs) -> Iterable:
     tqdm_module = try_import("tqdm", "tqdm")
     if tqdm_module is None:
         return lyt_tqdm(iterable)
-    return tqdm_module.tqdm(iterable, *args, **kargs)        
+    return tqdm_module.tqdm(iterable, *args, **kargs)
 
-def bytes_to_human(byte_num: int) -> str:
+def _bytes_to_human(byte_num: int) -> str:
     if byte_num < 1024:
         return f"{byte_num} B"
     unit_list = ["KB", "MB", "GB", "TB"]
@@ -133,6 +84,17 @@ def bytes_to_human(byte_num: int) -> str:
         if unit_num < 1024:
             return "{:.2f} {}".format(unit_num, unit)
     return "{:.2f} {}".format(unit_num, unit_list[-1])
+
+def bytes_to_human(byte_num: int) -> str:
+    if byte_num < 0:
+        return "-" + _bytes_to_human(-byte_num)
+    return _bytes_to_human(byte_num)
+
+def kb_to_human(kb_num: int) -> str:
+    return bytes_to_human(1024 * kb_num)
+
+def pages_to_human(page_num: int) -> str:
+    return bytes_to_human(4096 * page_num)
 
 def time() -> float:
     import time
@@ -160,7 +122,7 @@ def toc(
             return f"elasped time is {s} seconds"
         h, m = divmod(m, 60)
         if h == 0:
-            return f"elasped time is {m}:{s}"
+            return f"elasped time is {m} min {s} seconds"
         d, h = divmod(h, 24)
         if d == 0:
             return f"elasped time is {h}:{m}:{s}"
@@ -192,209 +154,6 @@ def set_low_priority() -> None:
     else:
         os.nice(20)
 
-def _run_print_when_return(
-    command: List[str], input: List[str], return_error: bool,
-    check_result: bool, strip: bool
-) -> Union[None, List[str], Tuple[List[str], List[str]]]:
-    """
-    Warning: this function may hang when wait() for subprocess to finish.
-
-    this function will print output in real time and return it finally.
-    """
-    import subprocess
-    p = subprocess.Popen(
-        command,
-        stdin=(subprocess.PIPE if input else None),
-        stdout=subprocess.PIPE,
-        stderr=(subprocess.PIPE if return_error else None),
-        text=True,
-    )
-
-    if input:
-        p.stdin.write(input)
-        p.stdin.flush()
-
-    output = []
-    error = []
-
-    for line in p.stdout:
-        print(line[:-1] if line.endswith("\n") else line)
-        if strip:
-            line = line.strip()
-        output.append(line)
-
-    p.wait()
-
-    if check_result and p.returncode != 0:
-        raise Return_nonzero_exception(p.returncode)
-
-    if return_error:
-        error = p.stderr.readlines()
-        for line in error:
-            pr_error(line[:-1] if line.endswith("\n") else line)
-        if strip:
-            error = [x.strip() for x in error]
-        return output, error
-    return output
-
-def run(
-    command: Union[str, List[str]], input: List[str] = None,
-    return_all: bool = False, return_output: bool = False, return_error: bool = False,
-    print_when_return: bool = False, check_result: bool = True,
-    strip: bool = True, timeout: float = None, print_command: bool = None,
-    wait: bool = True, shell: bool = False
-) -> Union[None, List[str], Tuple[List[str], List[str]]]:
-    """
-    @command can be a list or string. 
-             But when you set shell=True, it must be a string.
-    @input should be a list containing strings line by line, if have.
-    @timeout is counted as seconds.
-    @print_when_return means return_output will be set to True, and timeout *must* be None.
-
-    WARNING: don't set shell=True when you have a lot of output! It will block in read.
-    """
-    if return_all:
-        return_output = True
-        return_error = True
-    if print_command is None:
-        print_command = (not return_output)
-    if shell:
-        if is_windows:
-            command = "powershell /c " + command
-    else:
-        if type(command) is str:
-            command = command.split()
-        if is_windows:
-            command = ["powershell", "/c"] + command
-    if print_command:
-        pr_command(command)
-    if input is not None:
-        input = "\n".join(input) + "\n"
-
-    if print_when_return:
-        assert timeout is None
-        assert not shell
-        return _run_print_when_return(command, input, return_error, check_result, strip)
-
-    import subprocess
-    p = subprocess.Popen(
-        command,
-        stdin=(subprocess.PIPE if input else None),
-        stdout=(subprocess.PIPE if return_output else None),
-        stderr=(subprocess.PIPE if return_error else None),
-        text=True,
-        shell=shell,
-    )
-
-    if not wait:
-        timeout = 0
-    try:
-        output, error = p.communicate(input, timeout=timeout)
-    except subprocess.TimeoutExpired as e:
-        if not wait:
-            return
-        p.kill()
-        output, error = p.communicate()
-        raise Timeout_exception(e, output=output, error=error)
-
-    def _process_output(string):
-        result = string.split("\n")
-        if not result[-1]:
-            result = result[:-1]
-        if strip:
-            result = [x.strip() for x in result]
-        return result
-
-    if return_output:
-        output = _process_output(output)
-    if return_error:
-        error = _process_output(error)
-
-    if check_result and p.returncode != 0:
-        # pr_error(f"return code: {p.returncode}")
-        raise Return_nonzero_exception(p.returncode)
-
-    if return_output and return_error:
-        return output, error
-    if return_output:
-        return output
-    if return_error:
-        return error
-
-def get(
-    command: Union[str, List[str]], input: List[str] = None,
-    return_error: bool = False,
-    print_when_return: bool = False, check_result: bool = True,
-    strip: bool = True, timeout: float = None, print_command: bool = None,
-    wait: bool = True, shell: bool = False
-) -> Union[List[str], Tuple[List[str], List[str]]]:
-    return run(
-        command, return_output=True, return_error=return_error,
-        input=input, print_when_return=print_when_return, check_result=check_result,
-        strip=strip, timeout=timeout, print_command=print_command,
-        wait=wait, shell=shell
-    )
-
-def run_remote(
-    ip: str, command: str, input: str = None,
-    return_all: bool = False, return_output: bool = False, return_error: bool = False,
-    check_result: bool = True, strip: bool = True, timeout: float = None,
-    print_command: bool = True
-) -> Union[None, List[str], Tuple[List[str], List[str]]]:
-    """
-    @command cannot be a list
-    """
-    return run(
-        ["ssh", ip, command],
-        input=input,
-        return_all=return_all, return_output=return_output, return_error=return_error,
-        check_result=check_result,
-        strip=strip, timeout=timeout, print_command=print_command
-    )
-
-def get_remote(
-    ip: str, command: Union[str, List[str]], input: List[str] = None,
-    return_error: bool = False, check_result: bool = True,
-    strip: bool = True, timeout: float = None, print_command: bool = None
-) -> Union[List[str], Tuple[List[str], List[str]]]:
-    return run_remote(
-        ip, command, return_output=True, return_error=return_error,
-        input=input, check_result=check_result,
-        strip=strip, timeout=timeout, print_command=print_command
-    )
-
-def run_shell(
-    command: str, ip: str = None, input: str = None,
-    return_all: bool = False, return_output: bool = False, return_error: bool = False,
-    check_result: bool = True, strip: bool = True, timeout: float = None,
-    print_command: bool = True
-) -> Union[None, List[str], Tuple[List[str], List[str]]]:
-    if ip is None:
-        return run(
-            command, input=input,
-            return_all=return_all, return_output=return_output, return_error=return_error,
-            check_result=check_result, strip=strip, timeout=timeout,
-            print_command=print_command, shell=True
-        )
-    else:
-        return run_remote(
-            ip, command, input=input,
-            return_all=return_all, return_output=return_output, return_error=return_error,
-            check_result=check_result, strip=strip, timeout=timeout,
-            print_command=print_command
-        )
-
-def get_shell(
-    command: str, ip: str = None, input: str = None, return_error: bool = False,
-    check_result: bool = True, strip: bool = True, timeout: float = None,
-    print_command: bool = True
-) -> Union[List[str], Tuple[List[str], List[str]]]:
-    return run_shell(
-        command, ip=ip, input=input, return_output=True, return_error=return_error,
-        check_result=check_result, strip=strip, timeout=timeout,
-        print_command=print_command
-    )
-
 def whoami() -> str:
     import os, pwd
     return pwd.getpwuid(os.getuid())[0]
@@ -402,108 +161,185 @@ def whoami() -> str:
 def i_am_root() -> bool:
     return whoami() == "root"
 
-def run_sudo(command: str, password: str = "qwe123!@#", print_command: bool = True) -> None:
+def enter_pexpect(command: str, timeout: int = 30, env: any = None):
+    import pexpect, signal
+    child = pexpect.spawn(command, timeout=timeout, env=env)
+    child.setwinsize(*get_terminal_size_hw())
+    signal.signal(signal.SIGWINCH, lambda *_ : child.setwinsize(*get_terminal_size_hw()))
+
+    return child
+
+def exit_pexpect(child: any):
+    import signal
+    child.close()
+    signal.signal(signal.SIGWINCH, signal.SIG_DFL)
+
+def run_sudo(
+    command: str, password: str = "qwe123!@#", print_command: bool = True
+) -> None:
     if i_am_root():
         run_shell(command)
         return
 
-    if print_command:
-        pr_command("sudo -k " + command)
+    command = "sudo -k -E " + command
 
-    expect_input = f"""
-        set timeout -1
-        spawn sudo -k {command}
-        expect {{
-            -re ": $" {{
-                send "{password}\\n"
-            }}
-        }}
-        interact
-        catch wait result
-        exit [lindex $result 3]
-    """
-    import lyt_io
-    with lyt_io.temp_file(expect_input) as p:
-        run(["expect", p], print_command=False)
+    if print_command:
+        pr_command(command)
+
+    import pexpect, os
+    expect_list = [": $"]
+    p = pexpect.spawn(command, env=os.environ)
+    p.expect(expect_list)
+    p.sendline(password)
+    print((p.before + p.after).decode(), end="")
+    p.interact()
+    p.close()
+
+def su(password: str = None) -> None:
+    if i_am_root():
+        return
+
+    if password is None:
+        password = "Huawei12#$"
+
+    expect_list = [": $"]
+    p = enter_pexpect("su -p", env=get_env())
+    p.expect(expect_list)
+    p.sendline(password)
+    print((p.before + p.after).decode(), end="")
+    p.interact()
+    exit_pexpect(p)
+
+def is_remote_available(
+    ip: str, port: int = None, timeout: int = 5
+) -> None:
+    if port is None:
+        port = 22
+
+    import pexpect
+    expect_list = [
+        "WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!",
+        "Are you sure you want to continue connecting*",
+        "[P|p]assword: ",
+        "(%|#|\$|>) $",
+        pexpect.EOF,
+        pexpect.TIMEOUT,
+    ]
+    p = enter_pexpect(f"ssh {ip} -p {port}", timeout=timeout)
+    i = p.expect(expect_list, timeout=timeout)
+    exit_pexpect(p)
+    if i >= 4:
+        return False
+    return True
+
+def wait_until_remote_available(ip: str, port: int = None) -> None:
+    pbar = tqdm(desc="trying to connect")
+    while not is_remote_available(ip, port=port):
+        pbar.update(1)
+        sleep(1)
+    pbar.close()
+    pr_info(f"{ip} is now available")
 
 def ssh(
     ip: str, password: str = None, command: str = None, port: int = None,
-    timeout: int = 5, wait: bool = True, print_command: bool = True
+    timeout: int = 5, wait: bool = True, print_command: bool = True,
+    interact: bool = False
 ) -> None:
     """
     Use this function when you need to run commands on remote machine with password.
     """
     if password is None:
         password = "Huawei12#$"
-    if command is None:
-        command = ""
     if port is None:
         port = 22
-    expect_input = f"""
-        set timeout -1
-        spawn ssh -o "ConnectTimeout 5" -p {port} {ip} {command}
 
-        expect {{
-			# first connect, no public key in ~/.ssh/known_hosts
-			"Are you sure you want to continue connecting*" {{
-				send "yes\\n"
-                expect {{
-                    -re "\[P|p]assword: $" {{
-                        send "{password}\\n"
-                    }}
+    if print_command:
+        pr_command("ssh " + ip)
 
-                    eof {{
-                        catch wait result
-                        exit [lindex $result 3]
-                    }}
-                }}
-			}}
+    import pexpect
+    expect_list = [
+        "WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!",
+        "Are you sure you want to continue connecting*",
+        "[P|p]assword: ",
+        "(%|#|\$|>) $",
+        pexpect.EOF,
+        pexpect.TIMEOUT,
+    ]
+    def do_ssh():
+        p = enter_pexpect(f"ssh {ip} -p {port}", timeout=timeout)
 
-			# already has public key in ~/.ssh/known_hosts
-			-re "\[P|p]assword: $" {{
-				send "{password}\\n"
-          	}}
+        def do_expect(start_index):
+            i = p.expect(expect_list[start_index:], timeout=timeout) + start_index
+            if i == 4:
+                exit_pexpect(p)
+                raise Return_nonzero_exception(0)
+            if i == 5:
+                exit_pexpect(p)
+                raise Timeout_exception()
+            print((p.before + p.after).decode(), end="")
 
-            # successfully logged in, go through to interact
-            -re "(%|#|\$|>) $" {{ }}
+            return i
+        
+        def remove_known_host(ip_addr, port):
+            if port == 22:
+                run(f'ssh-keygen -f ~/.ssh/known_hosts -R "{ip_addr}"', shell=True)
+            else:
+                run(f'ssh-keygen -f ~/.ssh/known_hosts -R "[{ip_addr}]:{port}"', shell=True)
 
-			## connect target machine time out
-			timeout {{
-				send_user "connection to {ip} timed out\\n"
-				exit 13
-        	}}
+        i = do_expect(0)
+        if i == 0:
+            exit_pexpect(p)
+            ip_addr = ip.split("@")[1]
 
-            ## I don't know what's it for, just keep it in case.
-			eof {{ 
-                catch wait result
-                exit [lindex $result 3]
-            }}
-       	}}
+            remove_known_host(ip_addr, port)
+            do_ssh()
+            return
 
-        interact
-        catch wait result
-        exit [lindex $result 3]
-    """
-    import lyt_io
-    pr_command("ssh")
-    start_time = time()
-    with lyt_io.temp_file(expect_input) as p:
+        if i == 1:
+            p.sendline("yes")
+            i = do_expect(2)
+
+        if i == 2:
+            p.sendline(password)
+            do_expect(3)
+
+        if command is None:
+            p.interact()
+            exit_pexpect(p)
+            return
+
+        p.sendline(command)
+        if interact:
+            p.interact()
+            exit_pexpect(p)
+            return
+
+        do_expect(3)
+        p.sendline("exit")
         try:
-            run(["expect", p], print_command=False)
-        except Return_nonzero_exception as e:
-            if time() - start_time > 10:
-                # we have successed once to connect and exit manually,
-                # no need to do anything more
-                return
+            do_expect(3)
+        except Return_nonzero_exception:
+            print((p.before).decode(), end="")
 
-            pr_error(f"error code: {e.ret}")
-            # success_rets = {2, 130, 255}
-            # if e.ret in success_rets:
-            #     return
-            if not wait:
-                raise e
-            wait_until_remote_available(ip)
-            run(["expect", p], print_command=False)
+        exit_pexpect(p)
+
+    start_time = time()
+    try:
+        do_ssh()
+    except (Return_nonzero_exception, Timeout_exception) as e:
+        if time() - start_time > timeout + 1:
+            # we have successed once to connect and exit manually,
+            # no need to do anything more
+            return
+
+        # pr_error(f"error code: {e.ret}")
+        # success_rets = {2, 130, 255}
+        # if e.ret in success_rets:
+        #     return
+        if not wait:
+            raise e
+        wait_until_remote_available(ip, port=port)
+        do_ssh()
 
 def scp(
     src: str, dest: str,
@@ -564,37 +400,47 @@ def scp(
             pr_command("scp")
         return run(["expect", p], print_command=False, return_all=return_all)
 
-def add_id_rsa(ip, password=None):
+def add_id_rsa(ip, password=None, port=None, add_private_key=False):
+    def _do_add_id_rsa(ip, port):
+        scp(get_home() + ".ssh/id_rsa", ip + ":~/.ssh/", port=port)
+
+    # check if we already can connect without password
+    try:
+        ssh(ip, command="echo hello", port=port, wait=False, password="", timeout=3)
+        if add_private_key:
+            _do_add_id_rsa(ip, port)
+        return
+    except (Return_nonzero_exception, Timeout_exception):
+        print()
+
     import lyt_io
     pub_key = lyt_io.load_txt(get_lib_root() + "config/authorized_keys")[0]
-    ssh(ip, command="mkdir -p ~/.ssh", password=password)
-    added_keys = lyt_io.load_txt_remote(f"{ip}:~/.ssh/authorized_keys")
-    if pub_key in added_keys:
-        return
-    ssh(ip, command=f'echo "{pub_key}" >> ~/.ssh/authorized_keys', password=password)
+    ssh(ip, command="mkdir -p ~/.ssh && chmod 700 ~/.ssh", password=password, port=port)
+    ssh(
+        ip,
+        command=f'echo "{pub_key}" >> ~/.ssh/authorized_keys',
+        password=password, port=port
+    )
+    ssh(ip, command="chmod 600 ~/.ssh/authorized_keys", password=password, port=port)
+    ssh(
+        ip, password=password, port=port,
+        command="sed -i 's/export TMOUT=.*$/export TMOUT=0/g' /etc/profile"
+    )
+    if add_private_key:
+        _do_add_id_rsa(ip, port)
 
-def run_multi_process(func: Callable, tasks: List, process_num: int = 6) -> List:
+def get_cpu_count() -> int:
+    import multiprocessing
+    return multiprocessing.cpu_count()
+
+def run_multi_process(func: Callable, tasks: List, process_num: int = None) -> List:
     from multiprocessing import Pool
 
+    if process_num is None:
+        process_num = get_cpu_count()
     with Pool(process_num) as pool:
         result = list(tqdm(pool.imap_unordered(func, tasks), total=len(tasks)))
     return result
-
-def wait_until_remote_available(ip: str) -> None:
-    pbar = tqdm(desc="trying to connect")
-    while True:
-        if pbar is not None:
-            pbar.update(1)
-        try:
-            run_remote(ip, "echo hello", return_all=True, timeout=5, print_command=False)
-            break
-        except (Return_nonzero_exception, Timeout_exception) as e:
-            if e.output is not None and "password" in e.output:
-                break
-            sleep(1)
-    if pbar is not None:
-        pbar.close()
-    print(f"{ip} is now available")
 
 def findmnt(path, ip=None) -> str:
     return get_shell(f"findmnt {path} -o TARGET -n", ip=ip)
@@ -609,25 +455,50 @@ def kexec(ip: str = None, boot_entry: str = None) -> None:
         # TODO
 
 
-def kexec_and_wait(ip: str, boot_entry: str = None) -> None:
-    pass
+def kexec_and_wait(ip: str, boot_entry: str = None, port: int = None, arch: str = None) -> None:
+    import lyt_sys
 
-def reboot_and_wait(ip: str, boot_entry: str = None, quick: bool = True) -> None:
+    entry = None
+    if boot_entry is None:
+        uname = run_remote(ip, "uname -r", return_output=True)[0]
+        entries = lyt_sys.get_grub_cfg(ip=ip, arch=arch)
+        for e in entries:
+            if uname in e:
+                entry = entries[e]
+    else:
+        entry = lyt_sys.get_grub_cfg(ip=ip, arch=arch)[boot_entry]
+    run_remote(
+        ip,
+        "kexec -l" + \
+            " /boot" + entry["vmlinux"] + \
+            ' --append="' + entry["append"].replace('"', '\\\"') + '"' + \
+            " --initrd=/boot" + entry["initrd"],
+        port=port,
+    )
+    try:
+        run_remote(ip, "kexec -e", check_result=False, timeout=3)
+    except Timeout_exception:
+        pass
+
+    # sleep(5)
+    wait_until_remote_available(ip, port=port)
+
+def reboot_and_wait(
+    ip: str, boot_entry: str = None, quick: bool = False, port: int = None, arch: str = None
+) -> None:
     if boot_entry is not None:
         pr_info(f"will reboot throgh entry: {boot_entry}")
 
-    if quick:
-        kexec_and_wait(ip, boot_entry=boot_entry)
-
     if boot_entry is not None:
-        run_remote(ip, f"grub2-editenv - set saved_entry='{boot_entry}'")
+        run_remote(ip, f"grub2-editenv - set saved_entry='{boot_entry}'", port=port)
 
-    try:
-        run_remote(ip, "reboot")
-    except Return_nonzero_exception:
-        pass
+    if quick:
+        run_remote(ip, "sync", port=port)
+        return kexec_and_wait(ip, boot_entry=boot_entry, port=port, arch=arch)
+
+    run_remote(ip, "reboot", port=port, check_result=False)
     sleep(5)
-    wait_until_remote_available(ip)
+    wait_until_remote_available(ip, port=port)
 
 def get_architecture() -> str:
     """
@@ -721,13 +592,18 @@ def set_env(env_name: str, value: any) -> None:
     import os
     os.environ[env_name] = value
 
-def get_env(env_name: str) -> str:
+def get_env(env_name: str = None) -> str:
     import os
+    if env_name is None:
+        return os.environ
     return os.environ[env_name]
 
 def get_lib_root() -> str:
     import lyt_io
     return lyt_io.get_path_parent(__file__, repeat=2)
+
+def get_config_root() -> str:
+    return get_lib_root() + "config/"
 
 def get_home() -> str:
     import lyt_io
@@ -965,7 +841,7 @@ def get_file_euler_auther(path) -> str:
             break
         if not found:
             return name
-        
+
         try:
             start = [x.isalpha() for x in b].index(True)
             b = b[start:]
@@ -989,5 +865,34 @@ def get_element(data: Mapping, *args: any) -> any:
     except KeyError:
         return None
 
+def make_lib_patch():
+    import lyt_io
+    d = lyt_io.get_temp_dir_path()
+    cp(get_lib_root() + "lib/", d)
+    dest = pwd()
+    with work_in(d):
+        lyt_io.save_txt(".gitignore", ["__pycache__/", ".gitignore"])
+        run("git init .")
+        run("git add -A")
+        run("git commit -m 't'")
+        patch_name = get("git format-patch -1")[0]
+    cp(d + patch_name, dest)
+
+def apply_lib_patch(path : str = None):
+    import lyt_io
+    if path is None:
+        path = pwd() + "0001-t.patch"
+
+    dest = pwd()
+    d = lyt_io.get_temp_dir_path()
+    d = d + "lyt_python_lib/"
+    mkdir(d)
+    with work_in(d):
+        run("git init .")
+        run(f"git apply {path}")
+    cp(d, dest)
+
 # alias
 b2h = bytes_to_human
+kb2h = kb_to_human
+p2h = pages_to_human
