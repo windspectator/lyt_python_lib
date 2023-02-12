@@ -1,9 +1,6 @@
-from typing import Union, List, Callable, Tuple, Iterable, Mapping
 from exception import *
 from base import *
 from lyt_print import *
-
-is_windows = False
 
 def _run_print_when_return(
     command: List[str], input: List[str], return_error: bool,
@@ -211,3 +208,24 @@ def get_shell(
         check_result=check_result, strip=strip, timeout=timeout,
         print_command=print_command
     )
+
+def run_sudo(
+    command: str, password: str = "qwe123!@#", print_command: bool = True
+) -> None:
+    if i_am_root():
+        run_shell(command)
+        return
+
+    command = "sudo -k -E " + command
+
+    if print_command:
+        pr_command(command)
+
+    import pexpect, os
+    expect_list = [": $"]
+    p = pexpect.spawn(command, env=os.environ)
+    p.expect(expect_list)
+    p.sendline(password)
+    print((p.before + p.after).decode(), end="")
+    p.interact()
+    p.close()

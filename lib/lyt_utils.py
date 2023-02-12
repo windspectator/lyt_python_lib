@@ -1,78 +1,13 @@
 from typing import Union, List, Callable, Tuple, Iterable, Mapping
 
-from base import is_windows, platform, try_import
+from base import is_windows, platform, try_import, whoami, i_am_root, set_low_priority, \
+    get_terminal_size, get_terminal_size_hw, tic, toc, is_iterable, work_in, \
+    run_multi_process, time
 from lyt_print import dye, print_in_color, \
     pr_error, pr_warn, pr_notice, pr_info, pr_debug, pr_command
 from exception import Timeout_exception, Return_nonzero_exception
-from run import run, get, run_remote, get_remote, run_shell, get_shell
-
-def get_terminal_size() -> List[int]:
-    """
-    returns (width, height)
-    """
-    import os
-    try:
-        size = os.get_terminal_size()
-    except OSError:
-        return (80, 24)
-    return [size[0], size[1]]
-
-def get_terminal_size_hw() -> List[int]:
-    return reversed(get_terminal_size())
-
-def is_iterable(obj) -> bool:
-    try:
-        iter(obj)
-        return True
-    except TypeError:
-        return False
-
-class lyt_tqdm():
-    def __init__(self, iterable: Iterable = None):
-        self.iterator = None if iterable is None else iter(iterable)
-        len_func = getattr(iterable, "__len__", None)
-        self.task_len = len_func() if callable(len_func) else None
-        self.task_done = 0
-
-    def print_progress_bar(self):
-        if self.task_len is None:
-            print("\r", f"{self.task_done} its", end="\r")
-            return
-        # at least minus 10 here to leave enough space
-        bar_len = get_terminal_size()[0] - 15
-        progress = self.task_done / self.task_len
-
-        if bar_len <= 0:
-            text = ""
-        else:
-            progress_len = int(bar_len * progress)
-            text = '[' + '|' * progress_len + '-' * (bar_len - progress_len) + ']'
-        import sys
-        print('\r', text, "{0:.1%}".format(progress), end='\r', file=sys.stderr)
-        if (self.task_done == self.task_len):
-            print()
-
-    def __iter__(self):
-        return self
-    
-    def update(self, num):
-        self.task_done += num
-        self.print_progress_bar()
-
-    def __next__(self):
-        next_item = next(self.iterator) if self.iterator else None
-        self.task_done += 1
-        self.print_progress_bar()
-        return next_item
-    
-    def close(self):
-        print()
-
-def tqdm(iterable: Iterable=None, *args, **kargs) -> Iterable:
-    tqdm_module = try_import("tqdm", "tqdm")
-    if tqdm_module is None:
-        return lyt_tqdm(iterable)
-    return tqdm_module.tqdm(iterable, *args, **kargs)
+from run import run, get, run_remote, get_remote, run_shell, get_shell, run_sudo
+from linux_commands import cd, cp, rm, mkdir, pwd, mv, echo
 
 def _bytes_to_human(byte_num: int) -> str:
     if byte_num < 1024:
@@ -96,70 +31,12 @@ def kb_to_human(kb_num: int) -> str:
 def pages_to_human(page_num: int) -> str:
     return bytes_to_human(4096 * page_num)
 
-def time() -> float:
-    import time
-    return time.time()
-
-# same as tic/toc in matlab
-_timer = 0
-def tic() -> None:
-    # reset _timer
-    global _timer
-    _timer = time()
-
-def toc(
-    print_time: bool = True, reset_timer: bool = True, return_str: bool = True
-) -> Union[float, str]:
-    global _timer
-    cur_time = time()
-    elasped_time = cur_time - _timer
-
-    def get_str(seconds):
-        m, s = divmod(seconds, 60)
-        s = "{:.2f}".format(s)
-        m = int(m)
-        if m == 0:
-            return f"elasped time is {s} seconds"
-        h, m = divmod(m, 60)
-        if h == 0:
-            return f"elasped time is {m} min {s} seconds"
-        d, h = divmod(h, 24)
-        if d == 0:
-            return f"elasped time is {h}:{m}:{s}"
-        return f"elasped time is {d} day {h}:{m}:{s}"
-
-    if reset_timer:
-        _timer = cur_time
-
-    elasped_str = get_str(elasped_time)
-    if print_time:
-        print(elasped_str)
-
-    return elasped_str if return_str else elasped_time
-
 def sleep(sec: float) -> None:
     """
     @sec: sleep time in seconds, can be a float number
     """
     import time
     time.sleep(sec)
-
-def set_low_priority() -> None:
-    import os
-    if is_windows:
-        # import psutil
-        # p = psutil.Process(os.getpid())
-        # p.nice(psutil.IDLE_PRIORITY_CLASS)  # BELOW_NORMAL_PRIORITY_CLASS
-        pass
-    else:
-        os.nice(20)
-
-def whoami() -> str:
-    import os, pwd
-    return pwd.getpwuid(os.getuid())[0]
-
-def i_am_root() -> bool:
-    return whoami() == "root"
 
 def enter_pexpect(command: str, timeout: int = 30, env: any = None):
     import pexpect, signal
@@ -173,27 +50,6 @@ def exit_pexpect(child: any):
     import signal
     child.close()
     signal.signal(signal.SIGWINCH, signal.SIG_DFL)
-
-def run_sudo(
-    command: str, password: str = "qwe123!@#", print_command: bool = True
-) -> None:
-    if i_am_root():
-        run_shell(command)
-        return
-
-    command = "sudo -k -E " + command
-
-    if print_command:
-        pr_command(command)
-
-    import pexpect, os
-    expect_list = [": $"]
-    p = pexpect.spawn(command, env=os.environ)
-    p.expect(expect_list)
-    p.sendline(password)
-    print((p.before + p.after).decode(), end="")
-    p.interact()
-    p.close()
 
 def su(password: str = None) -> None:
     if i_am_root():
@@ -233,6 +89,7 @@ def is_remote_available(
     return True
 
 def wait_until_remote_available(ip: str, port: int = None) -> None:
+    from lyt_tqdm import tqdm
     pbar = tqdm(desc="trying to connect")
     while not is_remote_available(ip, port=port):
         pbar.update(1)
@@ -429,19 +286,6 @@ def add_id_rsa(ip, password=None, port=None, add_private_key=False):
     if add_private_key:
         _do_add_id_rsa(ip, port)
 
-def get_cpu_count() -> int:
-    import multiprocessing
-    return multiprocessing.cpu_count()
-
-def run_multi_process(func: Callable, tasks: List, process_num: int = None) -> List:
-    from multiprocessing import Pool
-
-    if process_num is None:
-        process_num = get_cpu_count()
-    with Pool(process_num) as pool:
-        result = list(tqdm(pool.imap_unordered(func, tasks), total=len(tasks)))
-    return result
-
 def findmnt(path, ip=None) -> str:
     return get_shell(f"findmnt {path} -o TARGET -n", ip=ip)
 
@@ -512,80 +356,6 @@ def get_architecture() -> str:
     arch_name = run("uname -m", return_output=True)[0]
     return arch_list[arch_name]
 
-def cd(path: str) -> None:
-    import os
-    os.chdir(path)
-
-def pwd() -> str:
-    import os, lyt_io
-    return lyt_io.format_folder(os.getcwd())
-
-def cp(src: str, dest: str) -> None:
-    run(["cp", "-r", src, dest])
-
-def mkdir(
-    path: str, exist_ok: bool = True, tmpfs: bool = False, size: int = 128
-) -> None:
-    """
-    this function can create multiple-level folders
-    """
-    import os
-    os.makedirs(path, exist_ok=exist_ok)
-    if tmpfs:
-        import lyt_io
-        assert len(lyt_io.get_path_children(path)) == 0
-        # run(["mount", "-t", "tmpfs", "-o", f"size={size}g", "lyt_temp", path])
-        run_sudo(f"mount -t tmpfs -o size={size}g lyt_temp {path}")
-
-def rm_one(
-    path: str, quiet: bool = False, not_exist_ok: bool = False, tmpfs: bool = False
-) -> None:
-    import lyt_io
-    if not lyt_io.is_path_exist:
-        assert not_exist_ok
-        return
-
-    if tmpfs:
-        run_sudo(f"umount -l {path}")
-        run(["rm", "-rf", path], print_command=not quiet)
-        return
-
-    try:
-        run(["rm", "-rf", path], print_command=not quiet)
-    except Return_nonzero_exception:
-        rm_one(path, quiet=quiet, not_exist_ok=not_exist_ok, tmpfs=True)
-
-def rm(
-    path: Union[str, List[str]], quiet: bool = False, not_exist_ok: bool = False,
-    tmpfs: bool = False
-) -> None:
-    if type(path) is str:
-        rm_one(path, quiet=quiet, not_exist_ok=not_exist_ok, tmpfs=tmpfs)
-        return
-
-    for p in path:
-        rm_one(p, quiet=quiet, not_exist_ok=not_exist_ok, tmpfs=tmpfs)
-
-def mv(src: str, dest: str, tmpfs: bool=False) -> None:
-    import lyt_io, shutil
-    if lyt_io.is_path_exist(dest):
-        dest = lyt_io.format_folder(dest) + lyt_io.get_path_name(src)
-
-    if not tmpfs:
-        shutil.move(src, dest)
-        return
-
-    assert lyt_io.is_dir(src)
-    mkdir(dest, tmpfs=True)
-    for child in lyt_io.get_path_children(src):
-        mv(child, dest)
-    rm(src)
-
-def echo(content: any, dest: str) -> None:
-    if type(content) is not str:
-        content = str(content)
-    run(f"echo {content} > {dest}", shell=True)
-
 def set_env(env_name: str, value: any) -> None:
     if type(value) is not str:
         value = str(value)
@@ -608,17 +378,6 @@ def get_config_root() -> str:
 def get_home() -> str:
     import lyt_io
     return lyt_io.format_folder(get_env("HOME"))
-
-class work_in:
-    def __init__(self, work_path: str):
-        self.old_path = pwd()
-        self.new_path = work_path
-
-    def __enter__(self):
-        cd(self.new_path)
-
-    def __exit__(self, *_):
-        cd(self.old_path)
 
 def sorted_arg(seq: List, key: Callable = None) -> List:
     """
